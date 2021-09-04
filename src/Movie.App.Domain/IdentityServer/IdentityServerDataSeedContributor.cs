@@ -65,7 +65,7 @@ namespace Movie.App.IdentityServer
 
         private async Task CreateApiScopesAsync()
         {
-            await CreateApiScopeAsync("App");
+            await CreateApiScopeAsync("MovieApp");
         }
 
         private async Task CreateApiResourcesAsync()
@@ -80,7 +80,7 @@ namespace Movie.App.IdentityServer
                 "role"
             };
 
-            await CreateApiResourceAsync("App", commonApiUserClaims);
+            await CreateApiResourceAsync("MovieApp", commonApiUserClaims);
         }
 
         private async Task<ApiResource> CreateApiResourceAsync(string name, IEnumerable<string> claims)
@@ -137,43 +137,61 @@ namespace Movie.App.IdentityServer
                 "role",
                 "phone",
                 "address",
-                "App"
+                "MovieApp"
             };
 
             var configurationSection = _configuration.GetSection("IdentityServer:Clients");
 
 
-            //Console Test / Angular Client
-            var consoleAndAngularClientId = configurationSection["App_App:ClientId"];
-            if (!consoleAndAngularClientId.IsNullOrWhiteSpace())
+            // Angular (Public) Client
+            var angularClientId = configurationSection["MovieApp_UI:ClientId"];
+            if (!angularClientId.IsNullOrWhiteSpace())
             {
-                var webClientRootUrl = configurationSection["App_App:RootUrl"]?.TrimEnd('/');
+                var webClientRootUrl = configurationSection["MovieApp_UI:RootUrl"]?.TrimEnd('/');
 
                 await CreateClientAsync(
-                    name: consoleAndAngularClientId,
+                    name: angularClientId,
                     scopes: commonScopes,
-                    grantTypes: new[] { "password", "client_credentials", "authorization_code" },
-                    secret: (configurationSection["App_App:ClientSecret"] ?? "1q2w3e*").Sha256(),
+                    grantTypes: new[] { "password", "authorization_code" },
+                    secret: (configurationSection["MovieApp_UI:ClientSecret"] ?? "1q2w3e*").Sha256(),
                     requireClientSecret: false,
                     redirectUri: webClientRootUrl,
                     postLogoutRedirectUri: webClientRootUrl,
                     corsOrigins: new[] { webClientRootUrl.RemovePostFix("/") }
                 );
             }
-            
-            
-            
+
+            //Console Test / Service (Confidential) Client 
+            var serviceClientId = configurationSection["MovieApp_App:ClientId"];
+            if (!serviceClientId.IsNullOrWhiteSpace())
+            {
+                var webClientRootUrl = configurationSection["MovieApp_App:RootUrl"]?.TrimEnd('/');
+
+                await CreateClientAsync(
+                    name: serviceClientId,
+                    scopes: commonScopes,
+                    grantTypes: new[] { "client_credentials" },
+                    secret: (configurationSection["MovieApp_App:ClientSecret"] ?? "1q2w3e*").Sha256(),
+                    requireClientSecret: true,
+                    redirectUri: webClientRootUrl,
+                    postLogoutRedirectUri: webClientRootUrl,
+                    corsOrigins: new[] { webClientRootUrl.RemovePostFix("/") },
+                    claimPrefix: string.Empty
+                );
+            }
+
+
             // Swagger Client
-            var swaggerClientId = configurationSection["App_Swagger:ClientId"];
+            var swaggerClientId = configurationSection["MovieApp_Swagger:ClientId"];
             if (!swaggerClientId.IsNullOrWhiteSpace())
             {
-                var swaggerRootUrl = configurationSection["App_Swagger:RootUrl"].TrimEnd('/');
+                var swaggerRootUrl = configurationSection["MovieApp_Swagger:RootUrl"].TrimEnd('/');
 
                 await CreateClientAsync(
                     name: swaggerClientId,
                     scopes: commonScopes,
                     grantTypes: new[] { "authorization_code" },
-                    secret: configurationSection["App_Swagger:ClientSecret"]?.Sha256(),
+                    secret: configurationSection["MovieApp_Swagger:ClientSecret"]?.Sha256(),
                     requireClientSecret: false,
                     redirectUri: $"{swaggerRootUrl}/swagger/oauth2-redirect.html",
                     corsOrigins: new[] { swaggerRootUrl.RemovePostFix("/") }
@@ -191,6 +209,7 @@ namespace Movie.App.IdentityServer
             string frontChannelLogoutUri = null,
             bool requireClientSecret = true,
             bool requirePkce = false,
+            string claimPrefix = "client_",
             IEnumerable<string> permissions = null,
             IEnumerable<string> corsOrigins = null)
         {
@@ -208,14 +227,15 @@ namespace Movie.App.IdentityServer
                         Description = name,
                         AlwaysIncludeUserClaimsInIdToken = true,
                         AllowOfflineAccess = true,
-                        AbsoluteRefreshTokenLifetime = 31536000, //365 days
-                        AccessTokenLifetime = 31536000, //365 days
+                        AbsoluteRefreshTokenLifetime = 604800, // 7 Days
+                        AccessTokenLifetime = 7200, //2 hours
                         AuthorizationCodeLifetime = 300,
                         IdentityTokenLifetime = 300,
                         RequireConsent = false,
                         FrontChannelLogoutUri = frontChannelLogoutUri,
                         RequireClientSecret = requireClientSecret,
-                        RequirePkce = requirePkce
+                        RequirePkce = requirePkce,
+                        ClientClaimsPrefix = claimPrefix
                     },
                     autoSave: true
                 );

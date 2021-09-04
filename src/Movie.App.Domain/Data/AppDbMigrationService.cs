@@ -20,16 +20,13 @@ namespace Movie.App.Data
 
         private readonly IDataSeeder _dataSeeder;
         private readonly IEnumerable<IAppDbSchemaMigrator> _dbSchemaMigrators;
-        private readonly ICurrentTenant _currentTenant;
 
         public AppDbMigrationService(
             IDataSeeder dataSeeder,
-            IEnumerable<IAppDbSchemaMigrator> dbSchemaMigrators,
-            ICurrentTenant currentTenant)
+            IEnumerable<IAppDbSchemaMigrator> dbSchemaMigrators)
         {
             _dataSeeder = dataSeeder;
             _dbSchemaMigrators = dbSchemaMigrators;
-            _currentTenant = currentTenant;
 
             Logger = NullLogger<AppDbMigrationService>.Instance;
         }

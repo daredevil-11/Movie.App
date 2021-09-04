@@ -1,23 +1,21 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Movie.App.EntityFrameworkCore;
-using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic;
 using Microsoft.OpenApi.Models;
+using Movie.App.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
 using Volo.Abp;
 using Volo.Abp.Account;
 using Volo.Abp.Account.Web;
 using Volo.Abp.AspNetCore.Authentication.JwtBearer;
-using Volo.Abp.AspNetCore.MultiTenancy;
 using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.AspNetCore.Mvc.UI.Bundling;
+using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic.Bundling;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.Shared;
 using Volo.Abp.AspNetCore.Serilog;
@@ -26,14 +24,12 @@ using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.UI.Navigation.Urls;
-using Volo.Abp.VirtualFileSystem;
 
 namespace Movie.App
 {
     [DependsOn(
         typeof(AppHttpApiModule),
         typeof(AbpAutofacModule),
-        typeof(AbpAspNetCoreMultiTenancyModule),
         typeof(AppApplicationModule),
         typeof(AppEntityFrameworkCoreModule),
         typeof(AbpAspNetCoreMvcUiBasicThemeModule),
@@ -96,7 +92,7 @@ namespace Movie.App
                 {
                     options.Authority = configuration["AuthServer:Authority"];
                     options.RequireHttpsMetadata = Convert.ToBoolean(configuration["AuthServer:RequireHttpsMetadata"]);
-                    options.Audience = "App";
+                    options.Audience = "MovieApp";
                     options.BackchannelHttpHandler = new HttpClientHandler
                     {
                         ServerCertificateCustomValidationCallback =
@@ -111,11 +107,11 @@ namespace Movie.App
                 configuration["AuthServer:Authority"],
                 new Dictionary<string, string>
                 {
-                    {"App", "App API"}
+                    { "MovieApp", "MovieApp API" }
                 },
                 options =>
                 {
-                    options.SwaggerDoc("v1", new OpenApiInfo {Title = "App API", Version = "v1"});
+                    options.SwaggerDoc("v1", new OpenApiInfo {Title = "MovieApp API", Version = "v1"});
                     options.DocInclusionPredicate((docName, description) => true);
                     options.CustomSchemaIds(type => type.FullName);
                 });
@@ -183,12 +179,11 @@ namespace Movie.App
             app.UseSwagger();
             app.UseAbpSwaggerUI(c =>
             {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "App API");
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "MovieApp API");
 
                 var configuration = context.ServiceProvider.GetRequiredService<IConfiguration>();
                 c.OAuthClientId(configuration["AuthServer:SwaggerClientId"]);
                 c.OAuthClientSecret(configuration["AuthServer:SwaggerClientSecret"]);
-                c.OAuthScopes("App");
             });
 
             app.UseAuditing();

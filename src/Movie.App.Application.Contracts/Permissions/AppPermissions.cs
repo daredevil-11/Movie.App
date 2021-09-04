@@ -2,7 +2,7 @@
 {
     public static class AppPermissions
     {
-        public const string GroupName = "App";
+        public const string GroupName = "MovieApp";
 
         //Add your own permission names. Example:
         //public const string MyPermission1 = GroupName + ".MyPermission1";
