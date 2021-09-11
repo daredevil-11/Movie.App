@@ -10,8 +10,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using Volo.Abp;
 using Volo.Abp.Account.Settings;
+using Volo.Abp.Account.Web;
+using Volo.Abp.Account.Web.Pages.Account;
 using Volo.Abp.Auditing;
+using Volo.Abp.DependencyInjection;
 using Volo.Abp.Identity;
 using Volo.Abp.Identity.AspNetCore;
 using Volo.Abp.Security.Claims;
@@ -20,9 +24,9 @@ using Volo.Abp.Validation;
 using IdentityUser = Volo.Abp.Identity.IdentityUser;
 using SignInResult = Microsoft.AspNetCore.Identity.SignInResult;
 
-namespace Volo.Abp.Account.Web.Pages.Account
+namespace Movie.App.Pages.Account
 {
-    public class LoginModel : AccountPageModel
+    public class CustomLoginModel : AccountPageModel
     {
         [HiddenInput]
         [BindProperty(SupportsGet = true)]
@@ -32,8 +36,8 @@ namespace Volo.Abp.Account.Web.Pages.Account
         [BindProperty(SupportsGet = true)]
         public string ReturnUrlHash { get; set; }
 
-        [BindProperty]
-        public LoginInputModel LoginInput { get; set; }
+        [BindProperty(SupportsGet = true)]
+        public CustomLoginInputModel CustomLoginInput { get; set; }
 
         public bool EnableLocalLogin { get; set; }
 
@@ -55,7 +59,7 @@ namespace Volo.Abp.Account.Web.Pages.Account
 
         public bool ShowCancelButton { get; set; }
 
-        public LoginModel(
+        public CustomLoginModel(
             IAuthenticationSchemeProvider schemeProvider,
             IOptions<AbpAccountOptions> accountOptions,
             IOptions<IdentityOptions> identityOptions)
@@ -67,19 +71,74 @@ namespace Volo.Abp.Account.Web.Pages.Account
 
         public virtual async Task<IActionResult> OnGetAsync()
         {
-            LoginInput = new LoginInputModel();
-
             ExternalProviders = await GetExternalProviders();
-
             EnableLocalLogin = await SettingProvider.IsTrueAsync(AccountSettingNames.EnableLocalLogin);
 
-            if (IsExternalLoginOnly)
+            if (!ExtractCredentialFromQuery() || !EnableLocalLogin)
             {
-                //return await ExternalLogin(vm.ExternalLoginScheme, returnUrl);
-                throw new NotImplementedException();
+                CustomLoginInput = new CustomLoginInputModel();
+                return Page();
             }
 
-            return Page();
+            await ReplaceEmailToUsernameOfInputIfNeeds();
+
+            var result = await SignInManager.PasswordSignInAsync(
+                CustomLoginInput.Username,
+                CustomLoginInput.Password,
+                CustomLoginInput.RememberMe,
+                true
+            );
+
+            await IdentitySecurityLogManager.SaveAsync(new IdentitySecurityLogContext()
+            {
+                Identity = IdentitySecurityLogIdentityConsts.Identity,
+                Action = result.ToIdentitySecurityLogAction(),
+                UserName = CustomLoginInput.Username
+            });
+
+            if (!result.Succeeded)
+            {
+                return Unauthorized();
+            }
+
+            //TODO: Find a way of getting user's id from the logged in user and do not query it again like that!
+            var user = await UserManager.FindByNameAsync(CustomLoginInput.Username) ??
+                       await UserManager.FindByEmailAsync(CustomLoginInput.Username);
+
+            Debug.Assert(user != null, nameof(user) + " != null");
+
+            return RedirectSafely(ReturnUrl, ReturnUrlHash);
+        }
+
+        private bool ExtractCredentialFromQuery()
+        {
+            var partialUrl = GetRedirectUrl(ReturnUrl, ReturnUrlHash);
+            if(!partialUrl.IsNullOrWhiteSpace())
+            {
+                var queryString = partialUrl[partialUrl.IndexOf('?')..].Split('#')[0];
+                var nvCollection = System.Web.HttpUtility.ParseQueryString(queryString);
+
+                var expectedQueryParam = new List<string>() 
+                {
+                    "username", "password", "rememberMe"
+                };
+                if (nvCollection.HasKeys() && expectedQueryParam.All(eqp =>
+                    !nvCollection[eqp].IsNullOrWhiteSpace() && nvCollection[eqp].Split(',').Length == 1))
+                {
+                    CustomLoginInput = new CustomLoginInputModel() 
+                    {
+                        Username = nvCollection["username"],
+                        Password = nvCollection["password"],
+                        RememberMe = Convert.ToBoolean(nvCollection["rememberMe"]),
+                    };
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            return false;
         }
 
         public virtual async Task<IActionResult> OnPostAsync(string action)
@@ -97,9 +156,9 @@ namespace Volo.Abp.Account.Web.Pages.Account
             await IdentityOptions.SetAsync();
 
             var result = await SignInManager.PasswordSignInAsync(
-                LoginInput.UserNameOrEmailAddress,
-                LoginInput.Password,
-                LoginInput.RememberMe,
+                CustomLoginInput.Username,
+                CustomLoginInput.Password,
+                CustomLoginInput.RememberMe,
                 true
             );
 
@@ -107,7 +166,7 @@ namespace Volo.Abp.Account.Web.Pages.Account
             {
                 Identity = IdentitySecurityLogIdentityConsts.Identity,
                 Action = result.ToIdentitySecurityLogAction(),
-                UserName = LoginInput.UserNameOrEmailAddress
+                UserName = CustomLoginInput.Username
             });
 
             if (result.RequiresTwoFactor)
@@ -134,8 +193,8 @@ namespace Volo.Abp.Account.Web.Pages.Account
             }
 
             //TODO: Find a way of getting user's id from the logged in user and do not query it again like that!
-            var user = await UserManager.FindByNameAsync(LoginInput.UserNameOrEmailAddress) ??
-                       await UserManager.FindByEmailAsync(LoginInput.UserNameOrEmailAddress);
+            var user = await UserManager.FindByNameAsync(CustomLoginInput.Username) ??
+                       await UserManager.FindByEmailAsync(CustomLoginInput.Username);
 
             Debug.Assert(user != null, nameof(user) + " != null");
 
@@ -284,24 +343,24 @@ namespace Volo.Abp.Account.Web.Pages.Account
 
         protected virtual async Task ReplaceEmailToUsernameOfInputIfNeeds()
         {
-            if (!ValidationHelper.IsValidEmailAddress(LoginInput.UserNameOrEmailAddress))
+            if (!ValidationHelper.IsValidEmailAddress(CustomLoginInput.Username))
             {
                 return;
             }
 
-            var userByUsername = await UserManager.FindByNameAsync(LoginInput.UserNameOrEmailAddress);
+            var userByUsername = await UserManager.FindByNameAsync(CustomLoginInput.Username);
             if (userByUsername != null)
             {
                 return;
             }
 
-            var userByEmail = await UserManager.FindByEmailAsync(LoginInput.UserNameOrEmailAddress);
+            var userByEmail = await UserManager.FindByEmailAsync(CustomLoginInput.Username);
             if (userByEmail == null)
             {
                 return;
             }
 
-            LoginInput.UserNameOrEmailAddress = userByEmail.UserName;
+            CustomLoginInput.Username = userByEmail.UserName;
         }
 
         protected virtual async Task CheckLocalLoginAsync()
@@ -312,11 +371,11 @@ namespace Volo.Abp.Account.Web.Pages.Account
             }
         }
 
-        public class LoginInputModel
+        public class CustomLoginInputModel
         {
             [Required]
             [DynamicStringLength(typeof(IdentityUserConsts), nameof(IdentityUserConsts.MaxEmailLength))]
-            public string UserNameOrEmailAddress { get; set; }
+            public string Username { get; set; }
 
             [Required]
             [DynamicStringLength(typeof(IdentityUserConsts), nameof(IdentityUserConsts.MaxPasswordLength))]
